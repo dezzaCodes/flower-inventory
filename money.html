@@ -79,6 +79,8 @@ tbody tr.row{cursor:pointer}
 tbody tr.row:hover td{background:var(--sunk)}
 .empty td{color:var(--muted);text-align:center;padding:24px}
 form.entry{display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--sunk)}
+.box > form.entry{border-bottom:1px solid var(--line)}
+tbody tr:last-child td{border-bottom:0}
 form.entry .field{flex:1 1 120px;width:auto}
 form.entry .field.desc{flex-basis:100%}
 form.entry .field.date{flex-basis:140px}
@@ -301,7 +303,7 @@ function renderLedger(d, type, total) {
   const amt = h('input', { class: 'field amount', name: 'amount', placeholder: '0.00', inputmode: 'decimal', 'aria-label': 'Amount', required: true, autocomplete: 'off' });
   const date = h('input', { class: 'field date', name: 'date', type: 'date', value: today(), 'aria-label': 'Date', required: true });
   const cat = view === 'all' ? catSelect('flowers', 'Business') : null;
-  const add = h('form', { class: 'entry', onsubmit: ev => {
+  const add = h('form', { class: 'entry', 'aria-label': type === 'income' ? 'Add income' : 'Add expense', onsubmit: ev => {
     ev.preventDefault();
     const cents = parseAmount(amt.value), text = desc.value.trim();
     if (!text) return desc.focus();
@@ -316,7 +318,7 @@ function renderLedger(d, type, total) {
 
   document.getElementById(type).replaceChildren(
     h('h2', {}, TITLES[type], h('small', {}, `${list.length} · ${fmt(total)}`)),
-    h('div', { class: 'box' }, h('table', {}, h('tbody', {}, rows)), add));
+    h('div', { class: 'box' }, add, h('table', {}, h('tbody', {}, rows))));
 }
 
 function editRow(e) {
