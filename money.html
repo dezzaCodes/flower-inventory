@@ -83,9 +83,9 @@ form.entry{display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--sun
 tbody tr:last-child td{border-bottom:0}
 form.entry .field{flex:1 1 120px;width:auto}
 form.entry .field.desc{flex-basis:100%}
-form.entry .field.date{flex-basis:140px}
-form.entry .field.amount{flex-basis:90px}
-form.entry select.field{flex:0 1 auto}
+form.entry .field.date{flex:0 0 132px;min-width:0}
+form.entry .field.amount{flex:1 1 70px}
+form.entry select.field{flex:0 0 auto}
 form.entry > .btn{flex:0 0 auto}
 tr.editing td{padding:0;background:var(--sunk)}
 tr.editing .actions{flex:1 1 100%;display:flex;gap:8px;justify-content:flex-end}
@@ -116,6 +116,11 @@ tr.editing .actions .del{margin-right:auto;color:var(--loss)}
   .tile{padding:12px 14px}
   .tile.result{grid-column:1/-1}
   form.entry > .btn{flex:1 1 100%}
+  /* Phones: date, amount and business share one line. */
+  form.entry{gap:6px}
+  form.entry .field{padding-inline:8px}
+  form.entry .field.date{flex-basis:116px}
+  form.entry .field.amount{flex-basis:50px}
   .connect form{flex-direction:column}
 }
 </style>
@@ -299,7 +304,7 @@ function renderLedger(d, type, total) {
   if (!list.length) rows.push(h('tr', { class: 'empty' }, h('td', { colspan: 2 },
     shown.size ? `No ${TITLES[type].toLowerCase()} yet.` : 'Tick Flowers or Juju above to see entries.')));
 
-  const desc = h('input', { class: 'field desc', name: 'desc', placeholder: type === 'income' ? 'What sold' : 'What it was for', 'aria-label': 'Description', required: true, autocomplete: 'off' });
+  const desc = h('input', { class: 'field desc', name: 'desc', placeholder: 'Description', 'aria-label': 'Description', required: true, autocomplete: 'off' });
   const amt = h('input', { class: 'field amount', name: 'amount', placeholder: '0.00', inputmode: 'decimal', 'aria-label': 'Amount', required: true, autocomplete: 'off' });
   const date = h('input', { class: 'field date', name: 'date', type: 'date', value: today(), 'aria-label': 'Date', required: true });
   const cat = view === 'all' ? catSelect('flowers', 'Business') : null;
