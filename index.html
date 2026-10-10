@@ -116,7 +116,12 @@ th.img-cell{width:82px}
 .thumb-box{display:block;width:72px;height:72px;border-radius:8px;overflow:hidden;background:var(--sunk)}
 /* The photos are tall, so show the full width and crop the top and bottom to a square around the flower head. */
 .thumb{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 36%}
-.hero{display:block;width:100%;height:auto;flex-shrink:0;background:var(--sunk) center/cover no-repeat;border-radius:10px}
+.hero{display:block;width:100%;height:auto;flex-shrink:0;background:var(--sunk);border-radius:10px}
+/* The high-resolution photo sits in a grey box of its own size and fades in once fully decoded. */
+.hero-box{display:block;flex-shrink:0;background:var(--sunk);border-radius:10px;overflow:hidden}
+.hero-box .hero{border-radius:0;transition:opacity .18s ease-out}
+.hero-box .hero.loading{opacity:0}
+@media (prefers-reduced-motion:reduce){.hero-box .hero{transition:none}}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 tbody tr{cursor:pointer}
 tbody tr:hover td{background:var(--sunk)}
@@ -315,6 +320,23 @@ let IMGS = {};
 const HAS_IMG = DATA.images > 0;
 // High-resolution photo files by row ({src, w, h}), for the detail panel. The thumbnail shows behind each one until it loads.
 const PHOTOS = DATA.photos || {};
+// Start downloading a row's photo before its panel opens: on press, on keyboard focus, and for the neighbours of an open row.
+const preloaded = new Set();
+const preload = r => {
+  const p = r && PHOTOS[r.i];
+  if (p && !preloaded.has(p.src)) { preloaded.add(p.src); new Image().src = p.src; }
+};
+const hero = r => {
+  const p = PHOTOS[r.i];
+  if (!p) return IMGS[r.i] ? h('img', { class: 'hero', src: IMGS[r.i], alt: '' }) : null;
+  const img = h('img', { class: 'hero', src: p.src, alt: '', width: p.w, height: p.h });
+  if (!img.complete) {
+    img.classList.add('loading');
+    const show = () => img.classList.remove('loading');
+    img.addEventListener('load', show); img.addEventListener('error', show);
+  }
+  return h('span', { class: 'hero-box' }, img);
+};
 const thumb = (r, cls) => IMGS[r.i]
   ? h('img', { class: cls, src: IMGS[r.i], alt: r.v[0] ? `${r.v[0]}, ${r.v[2] || ''}`.replace(/, $/, '') : '', loading: 'lazy', decoding: 'async' })
   : h('span', { class: cls, 'aria-hidden': 'true' });
@@ -462,6 +484,7 @@ const tbody = document.getElementById('tbody');
 const renderBody = () => {
   tbody.replaceChildren(...state.view.map((r, idx) => h('tr', { tabindex: 0,
     onclick: () => openDetail(idx),
+    onpointerdown: () => preload(r), onfocus: () => preload(r),
     onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(idx); } } },
     HAS_IMG ? h('td', { class: 'img-cell' }, h('span', { class: 'thumb-box' }, thumb(r, 'thumb'))) : null,
     SHOWN.map((m, k) => h('td', {
@@ -587,6 +610,7 @@ function openDetail(idx) {
   if (cur < 0) lastFocus = document.activeElement;
   cur = idx;
   const r = state.view[idx];
+  preload(state.view[idx - 1]); preload(state.view[idx + 1]);
   const DESC = colIdx('description'), FROM = colIdx('where from');
   const sibs = ROWS.filter(o => o !== r && o.v[0] && o.v[0].toLowerCase() === r.v[0].toLowerCase());
   const close = h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Close', onclick: closeDetail }, '×');
@@ -596,9 +620,7 @@ function openDetail(idx) {
       h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Previous', disabled: idx === 0 || null, onclick: () => openDetail(idx - 1) }, '←'),
       h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Next', disabled: idx === state.view.length - 1 || null, onclick: () => openDetail(idx + 1) }, '→'),
       close),
-    HAS_IMG && (PHOTOS[r.i] || IMGS[r.i]) ? h('img', { class: 'hero', src: PHOTOS[r.i]?.src || IMGS[r.i], alt: '', decoding: 'async',
-      width: PHOTOS[r.i]?.w, height: PHOTOS[r.i]?.h,
-      style: PHOTOS[r.i] && IMGS[r.i] ? `background-image:url("${IMGS[r.i]}")` : null }) : null,
+    HAS_IMG ? hero(r) : null,
     h('h2', { id: 'sheetTitle' }, r.v[0] ? nameParts(r.v[0]) : '(untitled)'),
     h('dl', { class: 'fields' }, ORDERED.filter(m => m.c !== 0 && m.kind !== 'empty' && m.name.toLowerCase() !== 'image').flatMap(m => [
       h('dt', {}, m.name),
