@@ -29,5 +29,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html images.json
+          git add index.html images.json photos
           git diff --cached --quiet || { git commit -m "Sync from Google Sheet" && git push; }

@@ -116,7 +116,7 @@ th.img-cell{width:82px}
 .thumb-box{display:block;width:72px;height:72px;border-radius:8px;overflow:hidden;background:var(--sunk)}
 /* The photos are tall, so show the full width and crop the top and bottom to a square around the flower head. */
 .thumb{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 36%}
-.hero{display:block;width:100%;height:auto;flex-shrink:0;background:var(--sunk);border-radius:10px}
+.hero{display:block;width:100%;height:auto;flex-shrink:0;background:var(--sunk) center/cover no-repeat;border-radius:10px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 tbody tr{cursor:pointer}
 tbody tr:hover td{background:var(--sunk)}
@@ -313,6 +313,8 @@ const cmpVal = (kind, x, y) => {
 
 let IMGS = {};
 const HAS_IMG = DATA.images > 0;
+// High-resolution photo files by row ({src, w, h}), for the detail panel. The thumbnail shows behind each one until it loads.
+const PHOTOS = DATA.photos || {};
 const thumb = (r, cls) => IMGS[r.i]
   ? h('img', { class: cls, src: IMGS[r.i], alt: r.v[0] ? `${r.v[0]}, ${r.v[2] || ''}`.replace(/, $/, '') : '', loading: 'lazy', decoding: 'async' })
   : h('span', { class: cls, 'aria-hidden': 'true' });
@@ -594,7 +596,9 @@ function openDetail(idx) {
       h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Previous', disabled: idx === 0 || null, onclick: () => openDetail(idx - 1) }, '←'),
       h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Next', disabled: idx === state.view.length - 1 || null, onclick: () => openDetail(idx + 1) }, '→'),
       close),
-    HAS_IMG && IMGS[r.i] ? h('img', { class: 'hero', src: IMGS[r.i], alt: '' }) : null,
+    HAS_IMG && (PHOTOS[r.i] || IMGS[r.i]) ? h('img', { class: 'hero', src: PHOTOS[r.i]?.src || IMGS[r.i], alt: '', decoding: 'async',
+      width: PHOTOS[r.i]?.w, height: PHOTOS[r.i]?.h,
+      style: PHOTOS[r.i] && IMGS[r.i] ? `background-image:url("${IMGS[r.i]}")` : null }) : null,
     h('h2', { id: 'sheetTitle' }, r.v[0] ? nameParts(r.v[0]) : '(untitled)'),
     h('dl', { class: 'fields' }, ORDERED.filter(m => m.c !== 0 && m.kind !== 'empty' && m.name.toLowerCase() !== 'image').flatMap(m => [
       h('dt', {}, m.name),

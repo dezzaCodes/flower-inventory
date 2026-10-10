@@ -1,18 +1,20 @@
 """Refresh the Flower Inventory page data from its Google Sheet.
 
 Usage: SHEET_ID=... python3 sync.py
-Replaces the contents of <script type="application/json" id="flower-data"> in index.html
-and rewrites images.json. Exits non-zero without writing anything if the sheet is not readable.
+Replaces the contents of <script type="application/json" id="flower-data"> in index.html,
+rewrites images.json (small thumbnails) and writes a high-resolution copy of each photo to photos/. Exits non-zero without writing anything if the sheet is not readable.
 The sheet ID comes from the environment so it never appears in this public repository.
 """
-import base64, csv, datetime, io, json, os, re, sys, urllib.request
+import base64, csv, datetime, hashlib, io, json, os, re, sys, urllib.request
 import html as html_lib
 from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
-from PIL import Image
+from PIL import Image, ImageOps
 
 SHEET = "https://docs.google.com/spreadsheets/d/" + os.environ["SHEET_ID"]
-IMG_WIDTH, WEBP_QUALITY = 360, 70
+IMG_WIDTH, WEBP_QUALITY = 360, 70          # thumbnails, inlined in images.json
+PHOTO_MAX, PHOTO_QUALITY = 2400, 90        # detail photos: longest side in pixels, one file each in photos/
+PHOTO_DIR = "photos"
 
 
 def get(url):
@@ -41,12 +43,29 @@ class SheetImages(HTMLParser):
             self.rownum = int(data.strip())
 
 
-def webp_data_uri(url):
-    raw, _ = get(re.sub(r"=[^=/]*$", "", url) + f"=w{IMG_WIDTH}")
-    im = Image.open(io.BytesIO(raw)).convert("RGB")
+def webp_bytes(im, quality):
     out = io.BytesIO()
-    im.save(out, "WEBP", quality=WEBP_QUALITY, method=6)
-    return "data:image/webp;base64," + base64.b64encode(out.getvalue()).decode()
+    im.save(out, "WEBP", quality=quality, method=6)
+    return out.getvalue()
+
+
+def photo(url, out_dir):
+    """Downloads the original image once and returns (thumbnail data URI, {src, w, h} of the high-resolution file, original size).
+    The high-resolution file is named by a hash of the original, so an unchanged photo is not re-encoded."""
+    base = re.sub(r"=[^=/]*$", "", url)
+    try:
+        raw, _ = get(base + "=s0")  # =s0 asks Google for the original size
+    except Exception:
+        raw, _ = get(base + "=w4000")
+    im = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+    name = f"{PHOTO_DIR}/{hashlib.sha1(raw).hexdigest()[:16]}.webp"
+    path = os.path.join(out_dir, name)
+    big = im.copy()
+    big.thumbnail((PHOTO_MAX, PHOTO_MAX), Image.LANCZOS)
+    if not os.path.exists(path):
+        open(path, "wb").write(webp_bytes(big, PHOTO_QUALITY))
+    small = im.resize((IMG_WIDTH, round(im.height * IMG_WIDTH / im.width)), Image.LANCZOS) if im.width > IMG_WIDTH else im
+    return "data:image/webp;base64," + base64.b64encode(webp_bytes(small, WEBP_QUALITY)).decode(), {"src": name, "w": big.width, "h": big.height}, im.size
 
 
 def main(page="index.html", out_dir="."):
@@ -67,17 +86,25 @@ def main(page="index.html", out_dir="."):
     parser.feed(html_view.decode("utf-8", "replace"))
 
     jobs = {k: parser.images[sheet_row] for k, (sheet_row, _) in enumerate(kept) if sheet_row in parser.images}
-    images = {}
+    os.makedirs(os.path.join(out_dir, PHOTO_DIR), exist_ok=True)
+    images, photos, sizes = {}, {}, []
     with ThreadPoolExecutor(8) as pool:
-        for k, uri in zip(jobs, pool.map(lambda u: _safe(webp_data_uri, u), jobs.values())):
-            if uri:
-                images[str(k)] = uri
+        for k, res in zip(jobs, pool.map(lambda u: _safe(photo, u, out_dir), jobs.values())):
+            if res:
+                images[str(k)], photos[str(k)], size = res
+                sizes.append(size)
+    # Drop high-resolution files no longer used by any row.
+    keep = {os.path.basename(p["src"]) for p in photos.values()}
+    for f in os.listdir(os.path.join(out_dir, PHOTO_DIR)):
+        if f not in keep:
+            os.remove(os.path.join(out_dir, PHOTO_DIR, f))
 
     data = {
         "synced": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "columns": cols,
         "rows": [r + [""] * (len(cols) - len(r)) for _, r in kept],
         "images": len(images),
+        "photos": photos,
         "sheet": SHEET + "/edit?usp=sharing",
         "sheetTitle": title,
     }
@@ -92,7 +119,11 @@ def main(page="index.html", out_dir="."):
     open(os.path.join(out_dir, os.path.basename(page)), "w", encoding="utf-8").write(html)
     json.dump(images, open(os.path.join(out_dir, "images.json"), "w"), separators=(",", ":"))
     print(f"{len(cols)} columns, {len(kept)} rows, {len(images)} images "
-          f"({os.path.getsize(os.path.join(out_dir, 'images.json')) // 1024} KB)")
+          f"({os.path.getsize(os.path.join(out_dir, 'images.json')) // 1024} KB thumbnails)")
+    if sizes:
+        widths = sorted(w for w, _ in sizes)
+        print(f"originals {widths[0]}-{widths[-1]}px wide (median {widths[len(widths) // 2]}); photos/ "
+              f"{sum(os.path.getsize(os.path.join(out_dir, PHOTO_DIR, f)) for f in keep) // 1024} KB")
 
 
 def sheet_title():
@@ -105,9 +136,9 @@ def sheet_title():
         return ""
 
 
-def _safe(fn, arg):
+def _safe(fn, arg, *rest):
     try:
-        return fn(arg)
+        return fn(arg, *rest)
     except Exception as e:
         print("image failed:", arg[:80], e, file=sys.stderr)
         return None
